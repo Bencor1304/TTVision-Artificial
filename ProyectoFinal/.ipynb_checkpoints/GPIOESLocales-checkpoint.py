@@ -1,10 +1,8 @@
 import Jetson.GPIO as GPIO
-import time
-
 def conf_init_gpio():
     #Configuracion inicial 
     GPIO.setmode(GPIO.BOARD)
-    GPIO.setwarnings(False)
+    GPIO.setwarnings(False) 
     #Entradas
     GPIO.setup(7,GPIO.IN)  # Sensor SA1
     GPIO.setup(11,GPIO.IN) # Sensor SA2
@@ -25,48 +23,48 @@ def conf_init_gpio():
     GPIO.setup(26,GPIO.OUT)  # Indicador Led YL1 (verde)
     GPIO.setup(24,GPIO.OUT)  # Indicador Led YL2 (amarillo)
     GPIO.setup(22,GPIO.OUT)  # Indicador Led YL3 (rojo)
-
+    return
 # funcion falla 
 def falla():
-    BS=GPIO.input(31)
-    BS_PARO=0
-    timer_BS=0
-    while BS==1 and BS_PARO==0:
-        BS=GPIO.input(31)
-        time.sleep(1)
-        timer_BS=timer_BS+1
-        if timer_BS>=10:
-            BS_PARO=1
-        else:
-            BS_PARO=0
-            
-    PE=GPIO.input(35)
     
-    if PE==1 or BS_PARO==1:
+    BS=GPIO.input(31)     #Lectura pin sensor BS
+    BS_paro=0             #Indicador de BS activo por mas de 10s
+    if  BS==1 :
+        BS=31
+        BS=GPIO.wait_for_edge(BS,GPIO.FALLING,timeout=10000) #Espera de cambio de 1 a 0
+        if BS==None:
+            BS_paro=1
+        else:
+            BS_paro=0
+
+    PE=GPIO.input(35)     #Lectura pin Boton de paro de emergencia
+    
+    if PE==1 or BS_paro==1 :
         falla_activa=1
     else :
-        falla_activa=0
-    return falla_activa
-    
+        falla_activa=0   
+    return falla_activa  #Indicador de paro por PE o BS
 #Secuencia de Emergencia
 def secuencia_emergencia():
     GPIO.output(36,1)
-    GPIO.output(22,1)
-
+    GPIO.output(22,1) #YL3 (Rojo) on 
+    GPIO.output(26,0) #YL1 (VERDE) off
+    return
 #Secuencia A
-def secuencia_A(PC):
+def secuencia_A():
+    GPIO.output(26,1)                           #YL1 (VERDE) on
+    
     estado=0
     falla_activa=0
     
     while estado==0 and falla_activa==0:         #YC1- (NA)
-        
         SA1=GPIO.input(7)
         SC2=GPIO.input(21)
         LS1=GPIO.input(33)
         falla_activa=falla()
-        if PC==1 and SA1==1 and SC2==1 and LS1==1 and falla_activa==0:
+        if SA1==1 and SC2==1 and LS1==1 and falla_activa==0:
             GPIO.output(36,1)
-            estado=GPIO.input(36)
+            estado=GPIO.input(36)               #Estado de la salida YC1
     
     estado=0
     while estado==0 and falla_activa==0:        #YA+
@@ -76,7 +74,7 @@ def secuencia_A(PC):
         if SC1==1 and falla_activa==0 :
             GPIO.output(40,1)
             estado=GPIO.input(40)
-    
+            
     estado=1
     while estado==1 and falla_activa==0:       #YA-
         
@@ -85,7 +83,7 @@ def secuencia_A(PC):
         if SA2==1 and falla_activa==0 :
             GPIO.output(40,0)
             estado=GPIO.input(40)
-    
+            
     estado=1
     while estado==1 and falla_activa==0:       #YC1+ (NA)
         
@@ -95,11 +93,15 @@ def secuencia_A(PC):
         if SA1==1 and LS1==0 and falla_activa==0 :
             GPIO.output(36,0)
             estado=GPIO.input(36)
-            
-    return falla_activa,estado        
-
+    if falla_activa==1:
+        secuencia_emergencia()
+        return falla_activa
+    GPIO.output(26,0)                         #YL1 (VERDE) off
+    return falla_activa
 #Secuencia B
-def secuencia_B(NC):
+def secuencia_B():
+    GPIO.output(24,1)                        #YL2 (AMARILLO) on
+    
     estado=0
     falla_activa=0
     while estado==0 and falla_activa==0:         #YB1+
@@ -107,10 +109,10 @@ def secuencia_B(NC):
         SB1=GPIO.input(13)
         SC2=GPIO.input(21)
         falla_activa=falla()
-        if NC==1 and SB1==1 and SC2==1 and falla_activa==0:
+        if SB1==1 and SC2==1 and falla_activa==0:
             GPIO.output(38,1)
             estado=GPIO.input(38)
-    
+            
     estado=0
     while estado==0 and falla_activa==0:        #YB1- YD1+
         
@@ -121,7 +123,7 @@ def secuencia_B(NC):
             GPIO.output(38,0)
             GPIO.output(32,1)
             estado=GPIO.input(32)
-    
+
     estado=1
     while estado==1 and falla_activa==0:         #YD1-
         
@@ -131,7 +133,10 @@ def secuencia_B(NC):
             GPIO.output(32,0)
             estado=GPIO.input(32)
             
-    return falla_activa,estado     
+    if falla_activa==1:
+        secuencia_emergencia()
+        return falla_activa 
+    return falla_activa
 
 #Reinicio 
 def reiniciogpio():
@@ -142,26 +147,11 @@ def reiniciogpio():
     GPIO.output(26,0) #YL1 (VERDE)
     GPIO.output(24,0) #YL2 (AMARILLO)
     GPIO.output(22,0) #YL3 (ROJO)
-
-#Inicio LS
-def inicio():
-    estado=0
-    falla_activa=0
-    while estado==0 and falla_activa==0:        #LS
-        
-        LS1=GPIO.input(33)
-        falla_activa=falla()
-        if LS1==1 and falla_activa==0 :
-            LS1=1
-            estado=1
-    return LS1
-
+    return
 if __name__ == '__main__':
-
     conf_init_gpio()
     falla()
     secuencia_emergencia()
     secuencia_A(PC)
     secuencia_B(NC)
     reiniciogpio()
-    inicio()
